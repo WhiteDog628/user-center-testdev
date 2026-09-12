@@ -132,3 +132,34 @@ jobs:
         run: |
           docker push "$IMAGE_NAME:latest"
           docker push "$IMAGE_NAME:${GITHUB_SHA}"
+
+
+  deploy-check:
+    needs: build-image
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+      - local-cd
+
+    steps:
+      - name: Check local runner
+        shell: powershell
+        run: |
+          Write-Host "Self-hosted runner is online."
+          Write-Host "Runner machine:"
+          hostname
+          whoami
+
+      - name: Check SSH connection to Ubuntu
+        shell: powershell
+        run: |
+          ssh `
+            -i "$env:USERPROFILE\.ssh\user_center_cd_ed25519" `
+            -o BatchMode=yes `
+            -o StrictHostKeyChecking=accept-new `
+            xkh@localhost `
+            "echo 'SSH to Ubuntu succeeded'; hostname; docker --version; cd ~/user-center-deploy && docker compose ps"
