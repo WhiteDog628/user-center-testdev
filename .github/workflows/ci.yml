@@ -94,7 +94,6 @@ jobs:
         if: always()
         run: docker compose down -v
 
-
   build-image:
     needs: api-tests
 
@@ -133,8 +132,7 @@ jobs:
           docker push "$IMAGE_NAME:latest"
           docker push "$IMAGE_NAME:${GITHUB_SHA}"
 
-
-  deploy-check:
+  deploy:
     needs: build-image
 
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -146,20 +144,109 @@ jobs:
       - local-cd
 
     steps:
-      - name: Check local runner
+      - name: Ensure Ubuntu WSL is running
         shell: powershell
         run: |
-          Write-Host "Self-hosted runner is online."
-          Write-Host "Runner machine:"
-          hostname
-          whoami
+          Start-Process `
+            -FilePath "wsl.exe" `
+            -ArgumentList "-d", "Ubuntu-24.04", "--exec", "sleep", "infinity" `
+            -WindowStyle Hidden
 
-      - name: Check SSH connection to Ubuntu
+          Start-Sleep -Seconds 3
+
+          wsl -l -v
+
+      - name: Wait for SSH connection
         shell: powershell
         run: |
+          $sshKey = "$env:USERPROFILE\.ssh\user_center_cd_ed25519"
+
+          for ($i = 1; $i -le 15; $i++) {
+              ssh `
+                -i $sshKey `
+                -o BatchMode=yes `
+                -o ConnectTimeout=5 `
+                -o StrictHostKeyChecking=accept-new `
+                xkh@localhost `
+                "echo SSH_READY"
+
+              if ($LASTEXITCODE -eq 0) {
+                  Write-Host "Ubuntu SSH is ready."
+                  exit 0
+              }
+
+              Write-Host "Waiting for Ubuntu SSH... attempt $i/15"
+              Start-Sleep -Seconds 2
+          }
+
+          throw "Ubuntu SSH did not become ready."
+
+      - name: Deploy commit image
+        shell: powershell
+        run: |
+          $sshKey = "$env:USERPROFILE\.ssh\user_center_cd_ed25519"
+          $sha = "${{ github.sha }}"
+
+          Write-Host "Deploying commit:"
+          Write-Host $sha
+
           ssh `
-            -i "$env:USERPROFILE\.ssh\user_center_cd_ed25519" `
+            -i $sshKey `
             -o BatchMode=yes `
-            -o StrictHostKeyChecking=accept-new `
             xkh@localhost `
-            "echo 'SSH to Ubuntu succeeded'; hostname; docker --version; cd ~/user-center-deploy && docker compose ps"
+            "cd ~/user-center-deploy && ./deploy.sh $sha"
+
+          if ($LASTEXITCODE -ne 0) {
+              throw "Remote deployment failed."
+          }
+
+      - name: Verify deployed version
+        shell: powershell
+        run: |
+          $sshKey = "$env:USERPROFILE\.ssh\user_center_cd_ed25519"
+          $expectedImage = "ghcr.io/whitedog628/user-center-testdev:${{ github.sha }}"
+
+          $actualImage = ssh `
+            -i $sshKey `
+            -o BatchMode=yes `
+            xkh@localhost `
+            "cat ~/user-center-deploy/.last_successful_image"
+
+          if ($LASTEXITCODE -ne 0) {
+              throw "Failed to read deployed version."
+          }
+
+          $actualImage = $actualImage.Trim()
+
+          Write-Host "Expected image: $expectedImage"
+          Write-Host "Actual image:   $actualImage"
+
+          if ($actualImage -ne $expectedImage) {
+              throw "Deployed image does not match current commit."
+          }
+
+          Write-Host "Deployed version verification passed."
+
+      - name: External health check
+        shell: powershell
+        run: |
+          for ($i = 1; $i -le 15; $i++) {
+              try {
+                  $response = Invoke-RestMethod `
+                    -Uri "http://localhost:5000/health" `
+                    -Method Get `
+                    -TimeoutSec 5
+
+                  if ($response.status -eq "ok") {
+                      Write-Host "External health check passed."
+                      exit 0
+                  }
+              }
+              catch {
+                  Write-Host "Health check attempt $i/15 failed."
+              }
+
+              Start-Sleep -Seconds 2
+          }
+
+          throw "External health check failed."
