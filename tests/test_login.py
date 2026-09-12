@@ -2,6 +2,8 @@ import time
 
 import requests
 
+import pytest
+
 from werkzeug.security import check_password_hash
 
 BASE_URL = "http://127.0.0.1:5000"
@@ -174,4 +176,38 @@ def test_login_database_validation(cleanup_users, db_connection):
     assert check_password_hash(
         user["password_hash"],
         password
+    )
+    
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "password": "Test123456"
+        },
+        {
+            "username": "test_user"
+        },
+        {
+            "username": "",
+            "password": "Test123456"
+        },
+        {
+            "username": "test_user",
+            "password": ""
+        },
+    ]
+)
+def test_login_required_fields(payload):
+    response = requests.post(
+        f"{BASE_URL}/api/login",
+        json=payload
+    )
+
+    assert response.status_code == 400
+
+    data = response.json()
+
+    assert (
+        data["message"]
+        == "username and password are required"
     )
