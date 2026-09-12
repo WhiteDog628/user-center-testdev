@@ -1,10 +1,8 @@
 import requests
 import time
-
-import requests
+import pytest
 
 BASE_URL = "http://127.0.0.1:5000"
-
 
 def test_get_profile_success(auth_user):
     token = auth_user["access_token"]
@@ -189,3 +187,112 @@ def test_update_profile_same_values(auth_user):
     assert data["message"] == "profile updated successfully"
     assert data["username"] == auth_user["username"]
     assert data["email"] == auth_user["email"]
+    
+@pytest.mark.parametrize(
+    "username_length, expected_status, expected_message",
+    [
+        (50, 200, "profile updated successfully"),
+        (51, 400, "username must be at most 50 characters"),
+    ]
+)
+def test_update_profile_username_length_boundary(
+    auth_user,
+    cleanup_users,
+    username_length,
+    expected_status,
+    expected_message
+):
+    token = auth_user["access_token"]
+
+    new_username = "u" * username_length
+
+    # 50 字符场景会真的修改数据库中的 username，
+    # 因此需要把新 username 也加入清理列表
+    if expected_status == 200:
+        cleanup_users.append(new_username)
+
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+
+    payload = {
+        "username": new_username
+    }
+
+    response = requests.put(
+        f"{BASE_URL}/api/user/profile",
+        headers=headers,
+        json=payload
+    )
+
+    assert response.status_code == expected_status
+
+    data = response.json()
+
+    assert data["message"] == expected_message
+
+
+@pytest.mark.parametrize(
+    "email_length, expected_status, expected_message",
+    [
+        (120, 200, "profile updated successfully"),
+        (121, 400, "email must be at most 120 characters"),
+    ]
+)
+def test_update_profile_email_length_boundary(
+    auth_user,
+    email_length,
+    expected_status,
+    expected_message
+):
+    token = auth_user["access_token"]
+
+    domain = "@example.com"
+    local_part_length = email_length - len(domain)
+
+    email = (
+        "a" * local_part_length
+        + domain
+    )
+
+    assert len(email) == email_length
+
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+
+    payload = {
+        "email": email
+    }
+
+    response = requests.put(
+        f"{BASE_URL}/api/user/profile",
+        headers=headers,
+        json=payload
+    )
+
+    assert response.status_code == expected_status
+
+    data = response.json()
+
+    assert data["message"] == expected_message
+    
+def test_update_profile_non_json_body(auth_user):
+    headers = {
+        "Authorization": (
+            f"Bearer {auth_user['access_token']}"
+        ),
+        "Content-Type": "text/plain"
+    }
+
+    response = requests.put(
+        f"{BASE_URL}/api/user/profile",
+        headers=headers,
+        data="not-json"
+    )
+
+    assert response.status_code == 400
+
+    data = response.json()
+
+    assert data["message"] == "request body must be JSON"

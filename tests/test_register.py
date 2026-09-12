@@ -297,3 +297,18 @@ def test_register_email_length_boundary(
     data = response.json()
 
     assert data["message"] == expected_message
+    
+def test_register_non_json_body():
+    response = requests.post(
+        f"{BASE_URL}/api/register",
+        data="not-json",
+        headers={
+            "Content-Type": "text/plain"
+        }
+    )
+
+    assert response.status_code == 400
+
+    data = response.json()
+
+    assert data["message"] == "request body must be JSON"

@@ -211,3 +211,18 @@ def test_login_required_fields(payload):
         data["message"]
         == "username and password are required"
     )
+    
+def test_login_non_json_body():
+    response = requests.post(
+        f"{BASE_URL}/api/login",
+        data="not-json",
+        headers={
+            "Content-Type": "text/plain"
+        }
+    )
+
+    assert response.status_code == 400
+
+    data = response.json()
+
+    assert data["message"] == "request body must be JSON"
