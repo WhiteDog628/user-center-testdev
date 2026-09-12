@@ -200,7 +200,7 @@ if [[ "$REGISTER_STATUS" != "201" ]]; then
     echo "Register smoke test failed."
     echo "HTTP status: $REGISTER_STATUS"
     cat /tmp/user-center-register.json
-    exit 1
+    false
 fi
 
 echo "Register smoke test passed."
@@ -224,7 +224,7 @@ if [[ "$LOGIN_STATUS" != "200" ]]; then
     echo "Login smoke test failed."
     echo "HTTP status: $LOGIN_STATUS"
     cat /tmp/user-center-login.json
-    exit 1
+    false
 fi
 
 echo "Login smoke test passed."
@@ -256,7 +256,7 @@ if [[ "$PROFILE_STATUS" != "200" ]]; then
     echo "Profile smoke test failed."
     echo "HTTP status: $PROFILE_STATUS"
     cat /tmp/user-center-profile.json
-    exit 1
+    false
 fi
 
 echo "Profile smoke test passed."
